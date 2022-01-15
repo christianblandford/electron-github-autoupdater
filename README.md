@@ -1,6 +1,6 @@
 # electron-github-autoupdater
 
-**Using this package with React?** Check out this project's companion package, [react-electron-autoupdater]('https://github.com/christianblandford/react-electron-autoupdater'), which provides a custom hook for easily handling updates in the renderer process!
+**Using this package with React?** Check out this project's companion package, [react-electron-autoupdater](https://github.com/christianblandford/react-electron-autoupdater), which provides a custom hook for easily handling updates in the renderer process!
 
 Are you using electron with maker-squirrel? Do you need to use a private or enterprise Github repo for deployment? Then this package is for you! Who wants to go through all the work of standing up an electron release server just to deploy and auto update an electron app. Isn't electron supposed to be easy? This package makes it that way.
 
@@ -41,8 +41,6 @@ That's pretty much it! It looks just like Electron's autoUpdater, but accepts a 
 - **forwardEvents** Optional. Default true. Specify if you want to automatically forward events to all renderer windows. Should only be disabled for performance reasons, or if manually handling events in the main process.
 
 ### Config Example
-
-https://github.com/christianblandford/electron-github-autoupdater
 
     const updater = autoUpdater({
         baseUrl: 'https://github.company.com/api/v3',
