@@ -1,0 +1,25 @@
+{
+    "compilerOptions": {
+        "target": "es5",
+        "module": "commonjs",
+        "declaration": true,
+        "outDir": "dist",
+        "allowJs": true,
+        "skipLibCheck": true,
+        "esModuleInterop": true,
+        "allowSyntheticDefaultImports": true,
+        "strict": true,
+        "forceConsistentCasingInFileNames": true,
+        "noFallthroughCasesInSwitch": true,
+        "moduleResolution": "node",
+        "resolveJsonModule": true,
+        "jsx": "react-jsx"
+    },
+    "include": [
+        "src",
+        "src/**/*.ts",
+    ],
+    "exclude": [
+        "node_modules"
+    ],
+}
