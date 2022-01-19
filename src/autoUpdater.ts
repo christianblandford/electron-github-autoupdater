@@ -111,6 +111,13 @@ class ElectronGithubAutoUpdater extends EventEmitter {
     return super.once(event, listener)
   }
 
+  // Destroys all related IpcMain listeners
+  destroy = () => {
+    ipcMain.removeAllListeners(`${channelName}.checkForUpdates`)
+    ipcMain.removeAllListeners(`${channelName}.quitAndInstall`)
+    ipcMain.removeAllListeners(`${channelName}.clearCache`)
+  }
+
   /**************************************************************************************************
    *     Internal Methods
    **************************************************************************************************/

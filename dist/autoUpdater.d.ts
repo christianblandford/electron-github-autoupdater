@@ -26,6 +26,7 @@ declare class ElectronGithubAutoUpdater extends EventEmitter {
     emit: (event: ElectronGithubAutoUpdaterEvent, args?: any) => boolean;
     on: (event: ElectronGithubAutoUpdaterEvent, listener: (...args: any[]) => void) => this;
     once: (event: ElectronGithubAutoUpdaterEvent, listener: (...args: any[]) => void) => this;
+    destroy: () => void;
     /**************************************************************************************************
      *     Internal Methods
      **************************************************************************************************/

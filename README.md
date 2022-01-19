@@ -122,6 +122,10 @@ Under the hood calling autoUpdater.quitAndInstall() will close all application w
 
 Clears the autoUpdate cache, should only be used in the event of a bug
 
+## destory()
+
+Removes all related IpcMain listeners. Should be used when re-initializing the autoUpdater object, if a setting changes or something similar.
+
 # Using in Renderer
 
 ## IPC Events

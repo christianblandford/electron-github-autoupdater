@@ -147,6 +147,12 @@ var ElectronGithubAutoUpdater = /** @class */ (function (_super) {
                 throw new Error("".concat(event, " is not an event emitted by this class"));
             return _super.prototype.once.call(_this, event, listener);
         };
+        // Destroys all related IpcMain listeners
+        _this.destroy = function () {
+            electron_1.ipcMain.removeAllListeners("".concat(constants_1.channelName, ".checkForUpdates"));
+            electron_1.ipcMain.removeAllListeners("".concat(constants_1.channelName, ".quitAndInstall"));
+            electron_1.ipcMain.removeAllListeners("".concat(constants_1.channelName, ".clearCache"));
+        };
         /**************************************************************************************************
          *     Internal Methods
          **************************************************************************************************/
