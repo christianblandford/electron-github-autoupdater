@@ -1,47 +1,68 @@
 /// <reference types="node" />
-import { autoUpdater as electronAutoUpdater } from 'electron';
 import EventEmitter from 'events';
-import { GithubRelease, ElectronGithubAutoUpdaterEvent } from './types';
-export declare type ElectronGithubAutoUpdaterOptions = {
+import { GithubRelease } from './types';
+declare const supportedPlatforms: readonly ["darwin", "win32"];
+export declare const channelName = "ElectronAutoUpdater";
+declare const electronAutoUpdaterEventTypes: readonly ["error", "checking-for-update", "update-available", "update-not-available", "update-downloaded", "before-quit-for-update"];
+export declare type ElectronAutoUpdaterEventType = typeof electronAutoUpdaterEventTypes[number];
+export declare type AutoUpdaterEventType = ElectronAutoUpdaterEventType | 'update-downloading';
+declare type LastEmit = {
+    type: AutoUpdaterEventType;
+    args: any[];
+};
+declare type PlatformConfig = {
+    requiredFiles: RegExp[];
+    feedUrl: string;
+};
+export declare type AutoUpdaterOptions = {
     baseUrl?: string;
     owner: string;
     repo: string;
     accessToken: string;
     allowPrerelease?: boolean;
-    forwardEvents?: boolean;
+    shouldForwardEvents?: boolean;
+    cacheFilePath?: string;
+    downloadsDirectory?: string;
 };
 declare class ElectronGithubAutoUpdater extends EventEmitter {
     baseUrl: string;
     owner: string;
     repo: string;
     accessToken: string;
-    autoUpdater: typeof electronAutoUpdater;
     allowPrerelease: boolean;
-    forwardEvents: boolean;
-    constructor({ baseUrl, owner, repo, accessToken, allowPrerelease, forwardEvents, }: ElectronGithubAutoUpdaterOptions);
-    _registerIpcListeners: () => void;
+    shouldForwardEvents: boolean;
+    currentVersion: string;
+    appName: string;
+    cacheFilePath: string;
+    downloadsDirectory: string;
+    eventTypes: string[];
+    lastEmit: LastEmit;
+    platform: typeof supportedPlatforms[number];
+    platformConfig: PlatformConfig;
+    _headers: Record<string, string>;
+    latestRelease: GithubRelease | null;
+    constructor({ baseUrl, owner, repo, accessToken, allowPrerelease, shouldForwardEvents, cacheFilePath, downloadsDirectory, }: AutoUpdaterOptions);
     /**************************************************************************************************
-     *     EventEmitter Overrides
+     * Add listeners and handlers for IPC
      **************************************************************************************************/
-    emit: (event: ElectronGithubAutoUpdaterEvent, args?: any) => boolean;
-    on: (event: ElectronGithubAutoUpdaterEvent, listener: (...args: any[]) => void) => this;
-    once: (event: ElectronGithubAutoUpdaterEvent, listener: (...args: any[]) => void) => this;
-    destroy: () => void;
+    _registerIpcMethods: () => void;
     /**************************************************************************************************
      *     Internal Methods
      **************************************************************************************************/
-    _emitError: (error: any) => never;
-    _getLatestRelease: () => Promise<any>;
-    _downloadUpdateFiles: (release: GithubRelease) => Promise<void>;
-    _downloadUpdateFile: (assetUrl: string, outputPath: string, onProgressEvent: (progressEvent: any) => void) => Promise<unknown>;
+    _emitError(error: any): void;
+    _initCache: () => void;
+    _registerInterceptors: () => void;
+    _getPlatformConfig: () => PlatformConfig;
+    _getCachedReleaseId: () => number | null;
+    getLatestRelease: () => Promise<GithubRelease>;
     _loadElectronAutoUpdater: (release: GithubRelease) => void;
     _installDownloadedUpdate: () => void;
-    /**************************************************************************************************
-     *     autoUpdater Overrides
-     **************************************************************************************************/
+    emit: (e: AutoUpdaterEventType, args?: any) => boolean;
+    downloadUpdateFromRelease: (release: GithubRelease) => Promise<void>;
+    clearCache: () => void;
     checkForUpdates: () => Promise<void>;
     quitAndInstall: () => void;
-    clearCache: () => void;
+    destroy: () => void;
 }
-export declare const autoUpdater: (config: ElectronGithubAutoUpdaterOptions) => ElectronGithubAutoUpdater;
+export declare const autoUpdater: (config: AutoUpdaterOptions) => ElectronGithubAutoUpdater;
 export {};

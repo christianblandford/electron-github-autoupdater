@@ -1,19 +1,3 @@
-import { autoUpdater } from 'electron'
-import { eventTypes } from './constants'
-
-export type AutoUpdateDownloadProgress = {
-  size: number
-  progress: number
-  percent: number
-}
-
-export type AutoUpdateRepoConfig = {
-  baseUrl: string
-  owner: string
-  repo: string
-  accessToken: string
-}
-
 export interface GithubRelease {
   url: string
   assets_url: string
@@ -70,11 +54,4 @@ export interface GithubReleaseAssetAuthor {
   received_events_url: string
   type: string
   site_admin: boolean
-}
-
-export type ElectronGithubAutoUpdaterEvent = typeof eventTypes[number]
-
-export type ElectronGithubAutoUpdaterIpcEvent = {
-  eventName: ElectronGithubAutoUpdaterEvent
-  eventDetails?: any
 }

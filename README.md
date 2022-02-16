@@ -69,6 +69,14 @@ Emitted when checking if an update has started.
 
 Emitted when there is an available update. The update is downloaded automatically.
 
+Returns:
+
+- `event` Event
+- `releaseNotes` String?: Returned if release description is provided in Github.
+- `releaseName` String
+- `releaseDate` Date
+- `updateURL` String: URL to view release in Github (html_url)
+
 ## Event: 'update-not-available'
 
 Emitted when there is no available update.
@@ -81,6 +89,10 @@ Returns:
 - `size` Number: Total size of all files that are being downloaded
 - `progress` Number: Total bytes downloaded
 - `percent` Number: Percent complete
+- `releaseNotes` String?: Returned if release description is provided in Github.
+- `releaseName` String
+- `releaseDate` Date
+- `updateURL` String: URL to view release in Github (html_url)
 
 Emitted when an update is downloading.
 
@@ -153,3 +165,7 @@ Alias for `quitAndInstall()`
 ### ipcRenderer.invoke('ElectronAutoUpdater.clearCache')
 
 Alias for `clearCache()`
+
+### ipcRenderer.invoke('ElectronAutoUpdater.getCurrentVersion')
+
+Alias for `app.getVersion()`

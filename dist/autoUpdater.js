@@ -81,126 +81,269 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.autoUpdater = void 0;
+exports.autoUpdater = exports.channelName = void 0;
 var axios_1 = __importDefault(require("axios"));
+var os_1 = __importDefault(require("os"));
 var electron_1 = require("electron");
 var electron_is_dev_1 = __importDefault(require("electron-is-dev"));
 var fs_1 = __importDefault(require("fs"));
 var path_1 = __importDefault(require("path"));
 var events_1 = __importDefault(require("events"));
 var semver_1 = require("semver");
-var constants_1 = require("./constants");
-var utils_1 = require("./utils");
+// Platform validation
+var supportedPlatforms = ['darwin', 'win32'];
+function assertPlatform(platform) {
+    if (!supportedPlatforms.includes(platform)) {
+        throw new TypeError('Not a supported platform');
+    }
+}
+var platform = os_1.default.platform();
+assertPlatform(platform);
+if (!supportedPlatforms.includes(platform))
+    throw new Error("Platform: ".concat(platform, " is not currently supported by electron-github-autoupdater"));
+exports.channelName = 'ElectronAutoUpdater';
+// Default event types from electron's autoUpdater
+var electronAutoUpdaterEventTypes = [
+    'error',
+    'checking-for-update',
+    'update-available',
+    'update-not-available',
+    'update-downloaded',
+    'before-quit-for-update',
+];
+// Custom event types for this library
+var eventTypes = __spreadArray(__spreadArray([], electronAutoUpdaterEventTypes, true), ['update-downloading'], false);
 var ElectronGithubAutoUpdater = /** @class */ (function (_super) {
     __extends(ElectronGithubAutoUpdater, _super);
     function ElectronGithubAutoUpdater(_a) {
-        var _b = _a.baseUrl, baseUrl = _b === void 0 ? 'https://api.github.com' : _b, owner = _a.owner, repo = _a.repo, accessToken = _a.accessToken, _c = _a.allowPrerelease, allowPrerelease = _c === void 0 ? false : _c, _d = _a.forwardEvents, forwardEvents = _d === void 0 ? true : _d;
+        var _b = _a.baseUrl, baseUrl = _b === void 0 ? 'https://api.github.com' : _b, owner = _a.owner, repo = _a.repo, accessToken = _a.accessToken, _c = _a.allowPrerelease, allowPrerelease = _c === void 0 ? false : _c, _d = _a.shouldForwardEvents, shouldForwardEvents = _d === void 0 ? true : _d, _e = _a.cacheFilePath, cacheFilePath = _e === void 0 ? path_1.default.join(electron_1.app.getPath('temp'), electron_1.app.getName(), 'updates', '.cache') : _e, _f = _a.downloadsDirectory, downloadsDirectory = _f === void 0 ? path_1.default.join(electron_1.app.getPath('temp'), electron_1.app.getName(), 'updates', 'downloads') : _f;
         var _this = _super.call(this) || this;
-        // Adds listeners for IPC Events
-        _this._registerIpcListeners = function () {
-            electron_1.ipcMain.handle("".concat(constants_1.channelName, ".checkForUpdates"), function (event) {
-                _this.checkForUpdates();
-                return true;
-            });
-            electron_1.ipcMain.handle("".concat(constants_1.channelName, ".quitAndInstall"), function (event) {
-                _this.quitAndInstall();
-                return true;
-            });
-            electron_1.ipcMain.handle("".concat(constants_1.channelName, ".clearCache"), function (event) {
-                _this.clearCache();
-                return true;
-            });
-        };
         /**************************************************************************************************
-         *     EventEmitter Overrides
+         * Add listeners and handlers for IPC
          **************************************************************************************************/
-        _this.emit = function (event, args) {
-            if (!constants_1.eventTypes.includes(event))
-                throw new Error("".concat(event, " is not an event that can be emitted by this class"));
-            if (_this.forwardEvents) {
-                electron_1.BrowserWindow.getAllWindows().map(function (window) {
-                    window.webContents.send(constants_1.channelName, { eventName: event, eventDetails: args });
+        // Adds listeners for IPC Events
+        _this._registerIpcMethods = function () {
+            electron_1.ipcMain.on(exports.channelName, function (event, method, args) {
+                switch (method) {
+                    case 'getStatus':
+                        event.returnValue = { eventName: _this.lastEmit.type, eventDetails: _this.lastEmit.args };
+                        break;
+                    case 'getVersion':
+                        event.returnValue = _this.currentVersion;
+                        break;
+                    default:
+                        throw new Error("No listener for ".concat(method));
+                }
+            });
+            electron_1.ipcMain.handle(exports.channelName, function (event, method, args) { return __awaiter(_this, void 0, void 0, function () {
+                var _a;
+                return __generator(this, function (_b) {
+                    switch (_b.label) {
+                        case 0:
+                            _a = method;
+                            switch (_a) {
+                                case 'checkForUpdates': return [3 /*break*/, 1];
+                                case 'quitAndInstall': return [3 /*break*/, 2];
+                                case 'clearCache': return [3 /*break*/, 3];
+                                case 'getLatestRelease': return [3 /*break*/, 4];
+                            }
+                            return [3 /*break*/, 6];
+                        case 1:
+                            this.checkForUpdates();
+                            return [2 /*return*/, true];
+                        case 2:
+                            this.quitAndInstall();
+                            return [2 /*return*/, true];
+                        case 3:
+                            this.clearCache();
+                            return [2 /*return*/, true];
+                        case 4: return [4 /*yield*/, this.getLatestRelease()];
+                        case 5: return [2 /*return*/, _b.sent()];
+                        case 6: throw new Error("No listener for ".concat(method));
+                    }
+                });
+            }); });
+        };
+        _this._initCache = function () {
+            // Create temp dir if not exists
+            if (!fs_1.default.existsSync(_this.downloadsDirectory))
+                fs_1.default.mkdirSync(_this.downloadsDirectory, { recursive: true });
+        };
+        // Intercept electron's autoUpdater events and forward to renderer
+        _this._registerInterceptors = function () {
+            if (_this.shouldForwardEvents) {
+                electron_1.autoUpdater.on('before-quit-for-update', function () { return _this.emit('before-quit-for-update'); });
+                electron_1.autoUpdater.on('update-available', function () {
+                    var _a, _b, _c, _d;
+                    return _this.emit('update-downloaded', {
+                        releaseName: (_a = _this.latestRelease) === null || _a === void 0 ? void 0 : _a.name,
+                        releaseNotes: (_b = _this.latestRelease) === null || _b === void 0 ? void 0 : _b.body,
+                        releaseDate: _this.latestRelease && new Date((_c = _this.latestRelease) === null || _c === void 0 ? void 0 : _c.published_at),
+                        updateUrl: (_d = _this.latestRelease) === null || _d === void 0 ? void 0 : _d.html_url,
+                    });
                 });
             }
-            if (!args) {
-                return _super.prototype.emit.call(_this, event);
-            }
-            else if (Array.isArray(args)) {
-                return _super.prototype.emit.apply(_this, __spreadArray([event], args, false));
+        };
+        // Gets the config for the current platform: files to download, the "feedURL" for electron's autoUpdater
+        _this._getPlatformConfig = function () {
+            return {
+                win32: {
+                    requiredFiles: [/[^ ]*-full\.nupkg/gim, /RELEASES/],
+                    feedUrl: _this.downloadsDirectory,
+                },
+                darwin: {
+                    requiredFiles: [/[^ ]*\.zip/gim, /feed.json/],
+                    feedUrl: path_1.default.join(_this.downloadsDirectory, 'feed.json'),
+                },
+            }[_this.platform];
+        };
+        _this._getCachedReleaseId = function () {
+            if (fs_1.default.existsSync(_this.cacheFilePath)) {
+                return parseInt(fs_1.default.readFileSync(_this.cacheFilePath, { encoding: 'utf-8' }));
             }
             else {
-                return _super.prototype.emit.call(_this, event, args);
+                return null;
             }
         };
-        _this.on = function (event, listener) {
-            if (typeof listener !== 'function')
-                throw new Error('Listener must be a function');
-            if (!constants_1.eventTypes.includes(event))
-                throw new Error("".concat(event, " is not an event emitted by this class"));
-            _super.prototype.on.call(_this, event, listener);
-            return _this;
-        };
-        _this.once = function (event, listener) {
-            if (typeof listener !== 'function')
-                throw new Error('Listener must be a function');
-            if (!constants_1.eventTypes.includes(event))
-                throw new Error("".concat(event, " is not an event emitted by this class"));
-            return _super.prototype.once.call(_this, event, listener);
-        };
-        // Destroys all related IpcMain listeners
-        _this.destroy = function () {
-            electron_1.ipcMain.removeAllListeners("".concat(constants_1.channelName, ".checkForUpdates"));
-            electron_1.ipcMain.removeAllListeners("".concat(constants_1.channelName, ".quitAndInstall"));
-            electron_1.ipcMain.removeAllListeners("".concat(constants_1.channelName, ".clearCache"));
-        };
-        /**************************************************************************************************
-         *     Internal Methods
-         **************************************************************************************************/
-        _this._emitError = function (error) {
-            _this.emit('error', error);
-            throw error;
-        };
-        _this._getLatestRelease = function () { return __awaiter(_this, void 0, void 0, function () {
-            var response, releases, filtered, response;
+        // Gets the latest release from github
+        _this.getLatestRelease = function () { return __awaiter(_this, void 0, void 0, function () {
+            var response, releases, matchedRelease;
             return __generator(this, function (_a) {
                 switch (_a.label) {
-                    case 0:
-                        if (!!this.allowPrerelease) return [3 /*break*/, 2];
-                        return [4 /*yield*/, axios_1.default.get("".concat(this.baseUrl, "/repos/").concat(this.owner, "/").concat(this.repo, "/releases?per_page=100"), {
-                                headers: (0, utils_1.generateHeaders)(this.accessToken),
-                            })];
+                    case 0: return [4 /*yield*/, axios_1.default.get("".concat(this.baseUrl, "/repos/").concat(this.owner, "/").concat(this.repo, "/releases?per_page=100"), {
+                            headers: this._headers,
+                        })];
                     case 1:
                         response = _a.sent();
-                        releases = response.data;
-                        filtered = releases.filter(function (release) { return !release.prerelease; });
-                        if (filtered.length === 0) {
-                            throw new Error('No production releases found');
+                        releases = response.data.filter(function (release) { return !release.draft; });
+                        if (releases.length === 0) {
+                            throw new Error('No releases found');
+                        }
+                        releases.sort(function (a, b) { return (0, semver_1.rcompare)(a.name, b.name); });
+                        if (this.allowPrerelease) {
+                            this.latestRelease = releases[0];
+                            return [2 /*return*/, releases[0]];
                         }
                         else {
-                            return [2 /*return*/, filtered[0]];
+                            matchedRelease = releases.find(function (release) { return !release.prerelease; });
+                            if (!matchedRelease)
+                                throw new Error('No non-preproduction releases found');
+                            this.latestRelease = matchedRelease;
+                            return [2 /*return*/, matchedRelease];
                         }
-                        return [3 /*break*/, 4];
-                    case 2: return [4 /*yield*/, axios_1.default.get("".concat(this.baseUrl, "/repos/").concat(this.owner, "/").concat(this.repo, "/releases/latest"), {
-                            headers: (0, utils_1.generateHeaders)(this.accessToken),
-                        })];
-                    case 3:
-                        response = _a.sent();
-                        return [2 /*return*/, response.data];
-                    case 4: return [2 /*return*/];
+                        return [2 /*return*/];
                 }
             });
         }); };
-        // Downloads all required update files for the current platform
-        _this._downloadUpdateFiles = function (release) { return __awaiter(_this, void 0, void 0, function () {
-            var assets, totalSize, downloaded, assets_1, assets_1_1, file, outputPath, assetDownloadUrl, e_1_1;
+        // Preps the default electron autoUpdater to install the update
+        _this._loadElectronAutoUpdater = function (release) {
+            if (!electron_is_dev_1.default) {
+                electron_1.autoUpdater.setFeedURL({ url: _this.platformConfig.feedUrl });
+            }
+        };
+        // Uses electron autoUpdater to install the downloaded update
+        _this._installDownloadedUpdate = function () {
+            if (!electron_is_dev_1.default) {
+                try {
+                    electron_1.autoUpdater.checkForUpdates();
+                }
+                catch (e) {
+                    _this._emitError(e);
+                }
+            }
+            else {
+                console.error('Cannot install an update while running in dev mode.');
+                // Fake an install for testing purposes
+                electron_1.autoUpdater.emit('update-available');
+            }
+        };
+        // Emit event, also optionally forward to renderer windows
+        _this.emit = function (e, args) {
+            // Store the last emit, so we can send to renderer listeners who were added in the middle of the process
+            // rather than re-performing the work
+            _this.lastEmit = { type: e, args: args };
+            // Emit over IPC also
+            if (_this.shouldForwardEvents) {
+                electron_1.BrowserWindow.getAllWindows().map(function (window) {
+                    window.webContents.send(exports.channelName, { eventName: e, eventDetails: args });
+                });
+            }
+            // Emit a regular event, for main process listeners
+            if (!args) {
+                return _super.prototype.emit.call(_this, e);
+            }
+            else if (Array.isArray(args)) {
+                return _super.prototype.emit.apply(_this, __spreadArray([e], args, false));
+            }
+            else {
+                return _super.prototype.emit.call(_this, e, args);
+            }
+        };
+        // Downloads the required files for the current platform from the provided release
+        _this.downloadUpdateFromRelease = function (release) { return __awaiter(_this, void 0, void 0, function () {
+            var assets, totalSize_1, downloaded_1, lastEmitPercent_1, downloadFile, assets_1, assets_1_1, asset, e_1_1, e_2;
             var _this = this;
             var e_1, _a;
             return __generator(this, function (_b) {
                 switch (_b.label) {
                     case 0:
-                        assets = (0, utils_1.findRequiredReleaseAssets)(release.assets);
-                        totalSize = assets.reduce(function (prev, asset) { return (prev += asset.size); }, 0);
-                        downloaded = 0;
+                        _b.trys.push([0, 14, , 15]);
+                        assets = this.platformConfig.requiredFiles.map(function (filePattern) {
+                            var match = release.assets.find(function (asset) { return asset.name.match(filePattern); });
+                            if (!match)
+                                throw new Error("Release is missing a required update file for current platform (".concat(platform, ")"));
+                            else
+                                return match;
+                        });
+                        totalSize_1 = assets.reduce(function (prev, asset) { return (prev += asset.size); }, 0);
+                        downloaded_1 = 0;
+                        lastEmitPercent_1 = -1;
+                        downloadFile = function (asset) {
+                            return new Promise(function (resolve, reject) { return __awaiter(_this, void 0, void 0, function () {
+                                var outputPath, assetUrl, data, writer;
+                                var _this = this;
+                                return __generator(this, function (_a) {
+                                    switch (_a.label) {
+                                        case 0:
+                                            outputPath = path_1.default.join(this.downloadsDirectory, asset.name);
+                                            assetUrl = "".concat(this.baseUrl, "/repos/").concat(this.owner, "/").concat(this.repo, "/releases/assets/").concat(asset.id);
+                                            return [4 /*yield*/, axios_1.default.get(assetUrl, {
+                                                    headers: __assign(__assign({}, this._headers), { Accept: 'application/octet-stream' }),
+                                                    responseType: 'stream',
+                                                })];
+                                        case 1:
+                                            data = (_a.sent()).data;
+                                            writer = fs_1.default.createWriteStream(outputPath);
+                                            // Emit a progress event when a chunk is downloaded
+                                            data.on('data', function (chunk) {
+                                                downloaded_1 += chunk.length;
+                                                var percent = Math.round((downloaded_1 * 100) / totalSize_1);
+                                                // Only emit once the value is greater, to prevent TONS of IPC events
+                                                if (percent > lastEmitPercent_1) {
+                                                    _this.emit('update-downloading', {
+                                                        downloadStatus: {
+                                                            size: totalSize_1,
+                                                            progress: downloaded_1,
+                                                            percent: Math.round((downloaded_1 * 100) / totalSize_1),
+                                                        },
+                                                        releaseName: release.name,
+                                                        releaseNotes: release.body || '',
+                                                        releaseDate: new Date(release.published_at),
+                                                        updateUrl: release.html_url,
+                                                    });
+                                                    lastEmitPercent_1 = percent;
+                                                }
+                                            });
+                                            // Pipe data into a writer to save it to the disk rather than keeping it in memory
+                                            data.pipe(writer);
+                                            data.on('end', function () {
+                                                resolve(true);
+                                            });
+                                            return [2 /*return*/];
+                                    }
+                                });
+                            }); });
+                        };
                         _b.label = 1;
                     case 1:
                         _b.trys.push([1, 7, 8, 13]);
@@ -209,17 +352,8 @@ var ElectronGithubAutoUpdater = /** @class */ (function (_super) {
                     case 2: return [4 /*yield*/, assets_1.next()];
                     case 3:
                         if (!(assets_1_1 = _b.sent(), !assets_1_1.done)) return [3 /*break*/, 6];
-                        file = assets_1_1.value;
-                        outputPath = path_1.default.join(constants_1.tempDir, file.name);
-                        assetDownloadUrl = "".concat(this.baseUrl, "/repos/").concat(this.owner, "/").concat(this.repo, "/releases/assets/").concat(file.id);
-                        return [4 /*yield*/, this._downloadUpdateFile(assetDownloadUrl, outputPath, function (event) {
-                                downloaded += event.loaded;
-                                _this.emit('update-downloading', {
-                                    size: totalSize,
-                                    progress: downloaded,
-                                    percent: Math.round((downloaded * 100) / totalSize),
-                                });
-                            })];
+                        asset = assets_1_1.value;
+                        return [4 /*yield*/, downloadFile(asset)];
                     case 4:
                         _b.sent();
                         _b.label = 5;
@@ -242,152 +376,142 @@ var ElectronGithubAutoUpdater = /** @class */ (function (_super) {
                         return [7 /*endfinally*/];
                     case 12: return [7 /*endfinally*/];
                     case 13:
-                        // Write a cache file containing the release ID
-                        fs_1.default.writeFileSync(constants_1.releaseIdCachePath, release.id.toString(), { encoding: 'utf-8' });
-                        console.log('Done downloading update files');
-                        return [2 /*return*/];
-                }
-            });
-        }); };
-        // Downloads a single file
-        _this._downloadUpdateFile = function (assetUrl, outputPath, onProgressEvent) { return __awaiter(_this, void 0, void 0, function () {
-            var _this = this;
-            return __generator(this, function (_a) {
-                return [2 /*return*/, new Promise(function (resolve, reject) { return __awaiter(_this, void 0, void 0, function () {
-                        var data, writer;
-                        return __generator(this, function (_a) {
-                            switch (_a.label) {
-                                case 0: return [4 /*yield*/, axios_1.default.get(assetUrl, {
-                                        headers: __assign(__assign({}, (0, utils_1.generateHeaders)(this.accessToken)), { Accept: 'application/octet-stream' }),
-                                        responseType: 'stream',
-                                    })];
-                                case 1:
-                                    data = (_a.sent()).data;
-                                    writer = fs_1.default.createWriteStream(outputPath);
-                                    // Emit a progress event when a chunk is downloaded
-                                    data.on('data', function (chunk) {
-                                        onProgressEvent({ loaded: chunk.length });
-                                    });
-                                    // Pipe data into a writer to save it to the disk rather than keeping it in memory
-                                    data.pipe(writer);
-                                    return [2 /*return*/, data.on('end', function () {
-                                            return resolve(true);
-                                        })];
-                            }
-                        });
-                    }); })];
-            });
-        }); };
-        // Preps the default electron autoUpdater to install the update
-        _this._loadElectronAutoUpdater = function (release) {
-            _this.emit('update-downloaded', {
-                releaseName: release.name,
-                releaseNotes: release.body || '',
-                releaseDate: new Date(release.published_at),
-                updateUrl: release.html_url,
-            });
-            if (!electron_is_dev_1.default) {
-                _this.autoUpdater.setFeedURL({ url: constants_1.platformConfig.feedUrl });
-            }
-        };
-        // Uses electron autoUpdater to install the downloaded update
-        _this._installDownloadedUpdate = function () {
-            if (!electron_is_dev_1.default) {
-                _this.autoUpdater.checkForUpdates();
-            }
-            else {
-                console.error('Cannot install an update while running in dev mode.');
-            }
-        };
-        /**************************************************************************************************
-         *     autoUpdater Overrides
-         **************************************************************************************************/
-        _this.checkForUpdates = function () { return __awaiter(_this, void 0, void 0, function () {
-            var latestRelease, latestReleaseVersion, releaseId, currentVersion, cachedReleaseId, e_2;
-            return __generator(this, function (_a) {
-                switch (_a.label) {
-                    case 0:
-                        _a.trys.push([0, 7, , 8]);
-                        this.emit('checking-for-update');
-                        return [4 /*yield*/, this._getLatestRelease()];
-                    case 1:
-                        latestRelease = _a.sent();
-                        latestReleaseVersion = latestRelease.tag_name;
-                        releaseId = latestRelease.id;
-                        currentVersion = electron_1.app.getVersion();
-                        cachedReleaseId = (0, utils_1.getCachedReleaseId)();
-                        if (!(0, semver_1.gte)(currentVersion, latestReleaseVersion)) return [3 /*break*/, 2];
-                        this.emit('update-not-available');
-                        return [3 /*break*/, 6];
-                    case 2:
-                        if (!(0, semver_1.gt)(latestReleaseVersion, currentVersion)) return [3 /*break*/, 5];
-                        this.emit('update-available');
-                        if (!(cachedReleaseId !== releaseId)) return [3 /*break*/, 4];
-                        return [4 /*yield*/, this._downloadUpdateFiles(latestRelease)];
-                    case 3:
-                        _a.sent();
-                        _a.label = 4;
-                    case 4:
-                        // Load the built in electron auto updater with the files we generated
-                        this._loadElectronAutoUpdater(latestRelease);
-                        // Use the built in electron auto updater to install the update
-                        this._installDownloadedUpdate();
-                        return [3 /*break*/, 6];
-                    case 5:
-                        // If we get here, there is a bug in the above logic.
-                        console.log({
-                            currentVersion: currentVersion,
-                            latestReleaseVersion: latestReleaseVersion,
-                            latestRelease: latestRelease,
-                            releaseId: releaseId,
-                            cachedReleaseId: cachedReleaseId,
-                        });
-                        throw new Error('Error in cache and release semver comparison. This is not a bug in your code, this is a problem with the library.');
-                    case 6: return [3 /*break*/, 8];
-                    case 7:
-                        e_2 = _a.sent();
+                        fs_1.default.writeFileSync(this.cacheFilePath, release.id.toString(), { encoding: 'utf-8' });
+                        return [3 /*break*/, 15];
+                    case 14:
+                        e_2 = _b.sent();
                         this._emitError(e_2);
-                        return [3 /*break*/, 8];
-                    case 8: return [2 /*return*/];
+                        return [3 /*break*/, 15];
+                    case 15: return [2 /*return*/];
                 }
             });
         }); };
-        _this.quitAndInstall = function () {
-            try {
-                _this.autoUpdater.quitAndInstall();
-            }
-            catch (e) {
-                _this._emitError(e);
-            }
-        };
+        // Clears the updates folder and cache file
         _this.clearCache = function () {
-            console.log('Clearing autoUpdater cache...');
             try {
-                fs_1.default.rmSync(constants_1.tempDir, { recursive: true, force: true });
-                if (fs_1.default.existsSync(constants_1.tempDir))
-                    throw new Error('Failed to clear temp directory');
-                (0, utils_1.getTempDir)();
-                console.log('Done clearing autoUpdater cache');
+                // Delete downloads dir if exists
+                if (fs_1.default.existsSync(_this.downloadsDirectory)) {
+                    fs_1.default.rmSync(_this.downloadsDirectory, { recursive: true, force: true });
+                }
+                // Delete cache file if exists
+                if (fs_1.default.existsSync(_this.cacheFilePath)) {
+                    fs_1.default.unlinkSync(_this.cacheFilePath);
+                }
+                _this._initCache();
                 _this.emit('update-not-available');
             }
             catch (e) {
                 _this._emitError(e);
             }
         };
+        _this.checkForUpdates = function () { return __awaiter(_this, void 0, void 0, function () {
+            var latestRelease, latestVersion, cachedReleaseID, error_1;
+            return __generator(this, function (_a) {
+                switch (_a.label) {
+                    case 0:
+                        _a.trys.push([0, 6, , 7]);
+                        // If already checking, log an error
+                        if (this.lastEmit.type === 'checking-for-update') {
+                            throw new Error('Already checking for updates, cannot check again.');
+                        }
+                        // First emit that we are checking
+                        this.emit('checking-for-update');
+                        return [4 /*yield*/, this.getLatestRelease()];
+                    case 1:
+                        latestRelease = _a.sent();
+                        latestVersion = latestRelease.tag_name;
+                        if (!(0, semver_1.gte)(this.currentVersion, latestVersion)) return [3 /*break*/, 2];
+                        this.emit('update-not-available');
+                        return [3 /*break*/, 5];
+                    case 2:
+                        this.emit('update-available', {
+                            releaseName: latestRelease.name,
+                            releaseNotes: latestRelease.body || '',
+                            releaseDate: new Date(latestRelease.published_at),
+                            updateUrl: latestRelease.html_url,
+                        });
+                        cachedReleaseID = this._getCachedReleaseId();
+                        if (!(!cachedReleaseID || cachedReleaseID !== latestRelease.id)) return [3 /*break*/, 4];
+                        this.clearCache();
+                        // Download the update files
+                        return [4 /*yield*/, this.downloadUpdateFromRelease(latestRelease)
+                            // Load the built in electron auto updater with the files we generated
+                        ];
+                    case 3:
+                        // Download the update files
+                        _a.sent();
+                        // Load the built in electron auto updater with the files we generated
+                        this._loadElectronAutoUpdater(latestRelease);
+                        // Use the built in electron auto updater to install the update
+                        this._installDownloadedUpdate();
+                        return [3 /*break*/, 5];
+                    case 4:
+                        if (electron_1.autoUpdater.getFeedURL() === this.platformConfig.feedUrl) {
+                            this.emit('update-downloaded');
+                        }
+                        else {
+                            // Load the built in electron auto updater with the files we generated
+                            this._loadElectronAutoUpdater(latestRelease);
+                            // Use the built in electron auto updater to install the update
+                            this._installDownloadedUpdate();
+                        }
+                        _a.label = 5;
+                    case 5: return [3 /*break*/, 7];
+                    case 6:
+                        error_1 = _a.sent();
+                        this._emitError(error_1);
+                        return [3 /*break*/, 7];
+                    case 7: return [2 /*return*/];
+                }
+            });
+        }); };
+        _this.quitAndInstall = function () {
+            try {
+                electron_1.autoUpdater.quitAndInstall();
+            }
+            catch (e) {
+                _this._emitError(e);
+            }
+        };
+        // Destroys all related IpcMain listeners
+        _this.destroy = function () {
+            electron_1.ipcMain.removeHandler(exports.channelName);
+            electron_1.ipcMain.removeAllListeners(exports.channelName);
+        };
         _this.baseUrl = baseUrl;
         _this.owner = owner;
         _this.repo = repo;
         _this.accessToken = accessToken;
-        _this.autoUpdater = electron_1.autoUpdater;
         _this.allowPrerelease = allowPrerelease;
-        _this.forwardEvents = forwardEvents;
-        // Register IPC listeners
-        _this._registerIpcListeners();
-        // Setup a listener for certain events emitted from electron's default autoUpdater, as that is still used
-        // by this package to install updates, and we want the events forwarded properly
-        _this.autoUpdater.addListener('before-quit-for-update', _this.emit);
+        _this.shouldForwardEvents = shouldForwardEvents;
+        _this.currentVersion = electron_1.app.getVersion();
+        _this.appName = electron_1.app.getName();
+        _this.cacheFilePath = cacheFilePath;
+        _this.downloadsDirectory = downloadsDirectory;
+        _this.eventTypes = eventTypes;
+        _this.lastEmit = { type: 'update-not-available', args: [] };
+        _this.latestRelease = null;
+        // Github request headers
+        _this._headers = { Authorization: "token ".concat(_this.accessToken) };
+        // TS validate platform
+        assertPlatform(platform);
+        _this.platform = platform;
+        _this.platformConfig = _this._getPlatformConfig();
+        // Initialize the app
+        _this._initCache();
+        _this._registerInterceptors();
+        // Register IPC handlers and listeners
+        if (_this.shouldForwardEvents)
+            _this._registerIpcMethods();
         return _this;
     }
+    /**************************************************************************************************
+     *     Internal Methods
+     **************************************************************************************************/
+    ElectronGithubAutoUpdater.prototype._emitError = function (error) {
+        this.emit('error', error);
+        console.error(error);
+    };
     return ElectronGithubAutoUpdater;
 }(events_1.default));
 // Export function that returns new instance of the updater, to closer match electron's autoUpdater API
