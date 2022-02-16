@@ -120,9 +120,20 @@ This event is emitted after a user calls `quitAndInstall()`.
 
 # Methods
 
-## checkForUpdates()
+All methods are class methods so use them like this:
+` const updater = autoUpdater({ ... }) updater.checkForUpdates()`
 
-Asks Github whether there is an update. FeedUrl is set automatically by this package.
+## async checkForUpdates()
+
+Checks Github for an update. If one is found, it will automatically be downloaded and installed. FeedUrl is set automatically by this package.
+
+## async getLatestRelease()
+
+Async function that returns the latest release from Github, regardless of if it is newer than the current app version or not. [More information here](https://docs.github.com/en/rest/reference/releases#list-releases).
+
+## async downloadUpdateFromRelease(release: GithubRelease)
+
+If you want to provide releases manually, this method will install any given release you pass it. Just like checkForUpdates(), except it will not automatically find the latest update. **Note:** implement your own checks to see if the release is a higher version number, as this function will install any release regardless of version.
 
 ## quitAndInstall()
 
@@ -154,18 +165,26 @@ Example:
 
 If you want to invoke this package's methods from the renderer, these IPC events expose them
 
-### ipcRenderer.invoke('ElectronAutoUpdater.checkForUpdates')
+### ipcRenderer.sendSync('ElectronAutoUpdater', 'getStatus')
 
-Alias for `checkForUpdates()`
+Returns the last emitted event, which should be the most recent status.
 
-### ipcRenderer.invoke('ElectronAutoUpdater.quitAndInstall')
+### ipcRenderer.sendSync('ElectronAutoUpdater', 'getVersion')
+
+Returns value from `app.getVersion()`, so that the renderer can know its current version.
+
+### ipcRenderer.invoke('ElectronAutoUpdater', 'checkForUpdates')
+
+Alias for `checkForUpdates()`. Does not return anything, but will emit events as it checks for updates and status changes.
+
+### ipcRenderer.invoke('ElectronAutoUpdater', 'quitAndInstall')
 
 Alias for `quitAndInstall()`
 
-### ipcRenderer.invoke('ElectronAutoUpdater.clearCache')
+### ipcRenderer.invoke('ElectronAutoUpdater', 'clearCache')
 
 Alias for `clearCache()`
 
-### ipcRenderer.invoke('ElectronAutoUpdater.getCurrentVersion')
+### ipcRenderer.invoke('ElectronAutoUpdater', 'getLatestRelease')
 
-Alias for `app.getVersion()`
+Returns the latest release found in github
