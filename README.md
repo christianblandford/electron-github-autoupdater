@@ -12,7 +12,7 @@ All you need to do is provide your Github base url, your organization or owner n
 
 ## Installation and Usage
 
-`yarn add -D electron-github-autoupdater`
+`yarn add electron-github-autoupdater`
 
 Import the library in your main process
 
