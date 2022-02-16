@@ -1,6 +1,6 @@
 {
   "name": "electron-github-autoupdater",
-  "version": "1.0.1",
+  "version": "2.0.0",
   "description": "Use private or enterprise GitHub repositories to auto update Electron apps. A replacement for Electron's build-in autoUpdater.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
