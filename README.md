@@ -46,7 +46,7 @@ That's pretty much it! It looks just like Electron's autoUpdater, but accepts a 
         baseUrl: 'https://github.company.com/api/v3',
         owner: 'christianblandford',
         repo: 'my-electron-app',
-        accessToken: '231e205d64ea7ac16c35839f63f891fc9a29f62c1'
+        accessToken: GITHUB_TOKEN
     })
 
 # Events
